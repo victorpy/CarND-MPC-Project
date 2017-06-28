@@ -65,6 +65,18 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
   return result;
 }
 
+void globalToCar(double px, double py, double psi, vector<double> ptsx, vector<double> ptsy, vector<double> &ptsx_c, vector<double> &ptsy_c) {
+	
+  for (unsigned int i = 0; i < ptsx.size(); i++) {
+	// from discussion https://discussions.udacity.com/t/mpc-car-space-conversion-and-output-of-solve-intuition/249469/9
+    double xi = (ptsx[i] - px) * cos(psi) + (ptsy[i] - py) * sin(psi);
+    double yi = (ptsy[i] - py) * cos(psi) - (ptsx[i] - px) * sin(psi);
+
+    ptsx_c.push_back(xi);
+    ptsy_c.push_back(yi);
+  }
+}
+
 int main() {
   uWS::Hub h;
 
@@ -92,6 +104,11 @@ int main() {
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
 
+          double latency = 0.1; 
+          px = px + v*cos(psi)*latency;
+          py = py + v*sin(psi)*latency;
+         
+
           /*
           * TODO: Calculate steering angle and throttle using MPC.
           *
@@ -100,6 +117,35 @@ int main() {
           */
           double steer_value;
           double throttle_value;
+          
+          // The polynomial 
+          vector<double> ptsx_c;
+          vector<double> ptsy_c;
+          globalToCar(px, py, psi, ptsx, ptsy, ptsx_c, ptsy_c);
+          
+          Eigen::VectorXd ptsx_v = Eigen::VectorXd::Map(ptsx_c.data(), ptsx.size());
+          Eigen::VectorXd ptsy_v = Eigen::VectorXd::Map(ptsy_c.data(), ptsy.size());
+
+          //we are in car position so x=0, y=0, psi=0
+          
+          auto coeffs = polyfit(ptsx_v, ptsy_v, 3);
+          double cte = polyeval(coeffs, 0) - 0;
+          // Due to the sign starting at 0, the orientation error is -f'(x).
+          // derivative of coeffs[0] + coeffs[1] * x + coeffs[2] * x^2 + coeff[3] * x^3 -> coeffs[1] + 2 * coeffs[2] * x + 3 * coeff[3] * x^2
+          double epsi = 0 - atan(coeffs[1] + (2 * coeffs[2] * 0) + (3 * coeffs[3] * pow(0,2)) );
+          
+          Eigen::VectorXd state(6);
+          //state << px, py, psi, v, cte, epsi;, 
+          state << 0, 0, 0, v, cte, epsi;
+          
+          auto vars = mpc.Solve(state, coeffs);
+          
+          //smooth erratic steer an throttle 
+          double correction = 0.4;
+          //vars[10] next steer, vars[11] next acceleration
+          steer_value = (vars[6]/deg2rad(25)) * correction * -1;
+          throttle_value = (vars[7]) * correction ;
+          
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
@@ -110,6 +156,12 @@ int main() {
           //Display the MPC predicted trajectory 
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
+          //vars[8] starts the next values for predicted points
+          
+          for(unsigned int i = 8; i < vars.size(); i=i+2){
+			  mpc_x_vals.push_back(vars[i]);
+			  mpc_y_vals.push_back(vars[i+1]);
+		  }
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Green line
@@ -120,6 +172,9 @@ int main() {
           //Display the waypoints/reference line
           vector<double> next_x_vals;
           vector<double> next_y_vals;
+          
+          next_x_vals = ptsx_c;
+          next_y_vals = ptsy_c;
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line

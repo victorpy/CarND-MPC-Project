@@ -1,0 +1,40 @@
+About the model
+
+The state of the vehicle is defined by [x,y,psi,v,cte,ev] where (x,y) are a position the vehicle is located,  psi is the orientation of the vehicle and v is the velocity of the vehicle. The last two are, the cross track error that express the error between the center of the road and the vehicles position; and the orientation error that is the error between the current orientation and the desired orientation.
+
+Actuators input allow to control the vehicle state, i defined two actuators [d,a], where d is the steering wheel with angles values between [-25,25] and a as single actuator in the range [-1,1], for defining breaking for negatives values and acceleration for positives values.
+
+The update equations that define how the state changes over time based on the previous state and current actuator inputs are defined as follow:
+
+x[t+1] = x[t] + v[t] * cos(psi[t]) * dt
+y[t+1] = y[t] + v[t] * sin(psi[t]) * dt
+psi[t+1] = psi[t] + v[t] / Lf * delta[t] * dt
+v[t+1] = v[t] + a[t] * dt
+cte[t+1] = f(x[t]) - y[t] + v[t] * sin(ev[t]) * dt
+
+ev[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
+
+where psides = arctan(f'(x)) and Lf is the distance between the front of the vehicle and the center of gravity.
+
+
+
+About Timestep lenght and Elapsed Duration
+
+As stated in the MPC lesson, first i determine a reasonble range for T. Based on the MPC quiz that used N = 25, dt = 0.05 and T = N * dt = 1,25; i estimated that between 1 and 1,5 seconds could be enough for the Horizon. Also, i kept in mind that there was a 100 ms delay, so i first set dt = 0.1 and after that started playing with the N value (from 9 to 16) until a got the smoother drive in the track. After i selected  N = 15, i started playing with the dt value, to find that a dt = 0.11 value gives me the smother drive from my tests. I think the smoother drive is the result of the decrease of the cross track error and orientation error to 0.
+
+About Polynomial fitting and MPC Preprocessing
+
+For polynomial fitting i used a 3rd order polynomial that can fit most of the roads.
+I prepocess the waypoints to convert from global maps coordinates to car coordinates before doing the calculations. I also modify the x,y state to add in the model the latency.
+
+
+about latency
+
+To include latency into the model i recalculated the values of px and px returned from telemetry.
+So just before doing any calculation, just after reading those values from telemetry i do:
+
+  double latency = 0.1; 
+  px = px + v*cos(psi)*latency;
+  py = py + v*sin(psi)*latency;
+  
+in that way the position of the car is corrected to the position plus latency before calculations.
